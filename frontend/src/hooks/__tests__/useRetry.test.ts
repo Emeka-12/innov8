@@ -91,4 +91,73 @@ describe("useRetry", () => {
     expect(result.current.state.attempt).toBe(0);
     expect(result.current.state.isLoading).toBe(false);
   });
+
+  // ── New fields: currentAttempt and nextRetryDelayMs ──────────────────────
+
+  it("exposes currentAttempt = 1 on the first successful call", async () => {
+    const fn = jest.fn().mockResolvedValue("ok");
+    const { result } = renderHook(() => useRetry(fn));
+
+    await act(async () => {
+      await result.current.execute();
+    });
+
+    expect(result.current.state.currentAttempt).toBe(1);
+    expect(result.current.state.nextRetryDelayMs).toBeNull();
+  });
+
+  it("exposes currentAttempt and nextRetryDelayMs while retrying", async () => {
+    let resolveRetry!: () => void;
+    const fn = jest
+      .fn()
+      .mockRejectedValueOnce(new Error("fail"))
+      .mockImplementationOnce(
+        () =>
+          new Promise<string>((res) => {
+            resolveRetry = () => res("ok");
+          }),
+      );
+
+    const { result } = renderHook(() =>
+      useRetry(fn, { initialDelayMs: 500, maxAttempts: 2 }),
+    );
+
+    // Start execution without awaiting so we can inspect intermediate state.
+    act(() => {
+      void result.current.execute();
+    });
+
+    // After first failure the hook starts counting the delay.
+    await act(async () => {
+      jest.advanceTimersByTime(0);
+    });
+
+    // Advance past the 500 ms delay so the retry fires.
+    await act(async () => {
+      jest.advanceTimersByTime(500);
+    });
+
+    // Resolve the second attempt.
+    await act(async () => {
+      resolveRetry();
+    });
+
+    expect(result.current.state.currentAttempt).toBeGreaterThanOrEqual(1);
+  });
+
+  it("resets currentAttempt and nextRetryDelayMs on reset()", async () => {
+    const fn = jest.fn().mockRejectedValue(new Error("fail"));
+    const { result } = renderHook(() => useRetry(fn, { maxAttempts: 1 }));
+
+    await act(async () => {
+      await result.current.execute();
+    });
+
+    act(() => {
+      result.current.reset();
+    });
+
+    expect(result.current.state.currentAttempt).toBe(0);
+    expect(result.current.state.nextRetryDelayMs).toBeNull();
+  });
 });

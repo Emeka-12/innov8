@@ -1,7 +1,7 @@
 "use client";
 
-import React from "react";
-import { Eye, ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
+import React, { useCallback, useState } from "react";
+import { Eye, ArrowDownToLine, ArrowUpFromLine, Link2, Check } from "lucide-react";
 import type { TradeStatus } from "@/types/trade";
 
 export interface TradeListItemProps {
@@ -14,6 +14,8 @@ export interface TradeListItemProps {
   onView: () => void;
   onDeposit?: () => void;
   onWithdraw?: () => void;
+  /** Base URL for building the trade link; defaults to window.location.origin. */
+  baseUrl?: string;
 }
 
 const STATUS_STYLES: Record<TradeStatus, string> = {
@@ -31,6 +33,9 @@ function truncateAddress(address: string): string {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
 }
 
+/** Duration (ms) the "copied" checkmark stays visible. */
+const COPY_FEEDBACK_MS = 1500;
+
 export function TradeListItem({
   tradeId,
   commodity,
@@ -41,8 +46,35 @@ export function TradeListItem({
   onView,
   onDeposit,
   onWithdraw,
+  baseUrl,
 }: TradeListItemProps) {
   const statusStyle = STATUS_STYLES[status] ?? STATUS_STYLES["DRAFT"];
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyLink = useCallback(
+    async (e: React.MouseEvent | React.KeyboardEvent) => {
+      e.stopPropagation();
+      const origin =
+        baseUrl ?? (typeof window !== "undefined" ? window.location.origin : "");
+      const link = `${origin}/trades/${tradeId}`;
+      try {
+        await navigator.clipboard.writeText(link);
+      } catch {
+        // Fallback for environments where clipboard API is unavailable.
+        const ta = document.createElement("textarea");
+        ta.value = link;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), COPY_FEEDBACK_MS);
+    },
+    [tradeId, baseUrl],
+  );
 
   return (
     <div
@@ -107,6 +139,25 @@ export function TradeListItem({
             className="p-2 rounded-lg border border-border-default text-text-muted hover:border-border-hover hover:text-text-primary transition-colors focus-visible:outline-2 focus-visible:outline-gold focus-visible:outline-offset-2"
           >
             <Eye aria-hidden="true" className="w-4 h-4" />
+          </button>
+
+          <button
+            onClick={handleCopyLink}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                void handleCopyLink(e);
+              }
+            }}
+            aria-label={copied ? `Link copied for trade ${tradeId}` : `Copy link for trade ${tradeId}`}
+            title={copied ? "Link copied!" : "Copy trade link"}
+            className="p-2 rounded-lg border border-border-default text-text-muted hover:border-border-hover hover:text-text-primary transition-colors focus-visible:outline-2 focus-visible:outline-gold focus-visible:outline-offset-2"
+          >
+            {copied ? (
+              <Check aria-hidden="true" className="w-4 h-4 text-emerald" />
+            ) : (
+              <Link2 aria-hidden="true" className="w-4 h-4" />
+            )}
           </button>
 
           {onDeposit && (

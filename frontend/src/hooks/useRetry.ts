@@ -16,6 +16,10 @@ export interface RetryState<T> {
   isRetrying: boolean;
   error: Error | null;
   attempt: number;
+  /** 1-based attempt number shown to the user (0 when not yet started). */
+  currentAttempt: number;
+  /** Milliseconds until the next retry fires; null when not retrying. */
+  nextRetryDelayMs: number | null;
 }
 
 const DEFAULT_CONFIG: Required<RetryConfig> = {
@@ -41,6 +45,8 @@ export function useRetry<T>(
     isRetrying: false,
     error: null,
     attempt: 0,
+    currentAttempt: 0,
+    nextRetryDelayMs: null,
   });
   const attemptRef = useRef(0);
 
@@ -72,6 +78,8 @@ export function useRetry<T>(
       isRetrying: false,
       error: null,
       attempt: 0,
+      currentAttempt: 0,
+      nextRetryDelayMs: null,
     });
     attemptRef.current = 0;
   }, []);
@@ -81,6 +89,8 @@ export function useRetry<T>(
       ...prev,
       isLoading: true,
       error: null,
+      currentAttempt: 1,
+      nextRetryDelayMs: null,
     }));
 
     for (let attempt = 0; attempt <= resolvedConfig.maxAttempts; attempt++) {
@@ -95,6 +105,8 @@ export function useRetry<T>(
           isRetrying: false,
           error: null,
           attempt,
+          currentAttempt: attempt + 1,
+          nextRetryDelayMs: null,
         });
 
         return data;
@@ -109,19 +121,29 @@ export function useRetry<T>(
             isRetrying: false,
             error: error as Error,
             attempt,
+            currentAttempt: attempt + 1,
+            nextRetryDelayMs: null,
           });
           return null;
         }
+
+        const delay = calculateDelay(attempt);
 
         setState((prev) => ({
           ...prev,
           isLoading: false,
           isRetrying: true,
           attempt: attempt + 1,
+          currentAttempt: attempt + 2,
+          nextRetryDelayMs: delay,
         }));
 
-        const delay = calculateDelay(attempt);
         await new Promise((resolve) => setTimeout(resolve, delay));
+
+        setState((prev) => ({
+          ...prev,
+          nextRetryDelayMs: null,
+        }));
       }
     }
 
